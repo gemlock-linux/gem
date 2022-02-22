@@ -1,86 +1,83 @@
+use std::io::Write;
+use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
-use std::{fs, io::Write, path::PathBuf};
+use std::process;
+use std::{fs, path::PathBuf};
 
-use git2::Repository;
-use hyper::body::HttpBody;
-use hyper::Client;
-use hyper::Uri;
-
+use super::definition::PackageDefinition;
 use super::Package;
 use crate::error::*;
 
 impl Package {
-    async fn pull_sources(&self) -> Result<()> {
-        let client = Client::new();
+    async fn build_package(&self) {
+        let build_script = fs::canonicalize(Path::new(&self.info.build.script)).unwrap();
 
-        for (name, source) in &self.info.sources {
-            let is_git = source.branch.is_some();
+        // TODO: add support for multiple cpu architectures
+        process::Command::new("fakeroot")
+            .current_dir("build/source/")
+            .env(
+                "DESTDIR",
+                fs::canonicalize("build/dest/").unwrap().to_str().unwrap(),
+            )
+            .env("SOURCE", "build/source/")
+            .env("VERSION", &self.info.package.version)
+            .env("TARGET_ARCH", "x86_64")
+            .arg("/bin/sh")
+            .arg("-c")
+            .arg(build_script.to_str().unwrap())
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
+    }
 
-            let source_path = format!("./build/source/{}", name);
-            if is_git {
-                let repo = if Path::new(&source_path).exists() {
-                    match Repository::open(source_path) {
-                        Ok(repo) => repo,
-                        Err(e) => Err(ErrorKind::GitError(e))?,
-                    }
-                } else {
-                    match Repository::clone(&source.url, source_path) {
-                        Ok(repo) => repo,
-                        Err(e) => Err(ErrorKind::GitError(e))?,
-                    }
-                };
+    async fn generate_pkgdef(&self) {
+        let mut def = PackageDefinition::new(&self.info);
 
-                let branch = source.branch.as_ref().unwrap();
-                match repo.set_head(&format!("refs/tags/{}", branch)) {
-                    Ok(it) => it,
-                    Err(err) => Err(ErrorKind::GitError(err))?,
-                };
+        // Read all files from dest directory and add them to the definition
+        for entry in glob::glob("build/dest/**/*").expect("Failed to read glob pattern") {
+            match entry {
+                Ok(path) => {
+                    let dst = path.strip_prefix("build/dest/").unwrap();
 
-                match repo.checkout_head(None) {
-                    Ok(it) => it,
-                    Err(err) => Err(ErrorKind::GitError(err))?,
-                };
+                    // Check if file is a symlink
+                    let mode = if path.symlink_metadata().unwrap().file_type().is_symlink() {
+                        let symlink = path.symlink_metadata().unwrap();
 
-                let obj = repo
-                    .find_object(repo.head().unwrap().target().unwrap(), None)
-                    .unwrap();
-                match repo.reset(&obj, git2::ResetType::Hard, None) {
-                    Ok(it) => it,
-                    Err(err) => Err(ErrorKind::GitError(err))?,
-                };
-            } else {
-                // Download the source
-                let url: Uri = match source.url.parse() {
-                    Ok(it) => it,
-                    Err(err) => Err(ErrorKind::InvalidUri(err))?,
-                };
+                        symlink.permissions().mode()
+                    } else {
+                        0o644
+                    };
 
-                let mut resp = match client.get(url).await {
-                    Ok(it) => it,
-                    Err(err) => Err(ErrorKind::HyperError(err))?,
-                };
-
-                let mut file = match fs::File::create(source_path) {
-                    Ok(it) => it,
-                    Err(err) => Err(ErrorKind::IoError(err))?,
-                };
-
-                // Download the file and write it to the build directory
-                while let Some(chunk) = resp.body_mut().data().await {
-                    match chunk {
-                        Ok(chunk) => match file.write_all(&chunk) {
-                            Err(err) => {
-                                Err(ErrorKind::IoError(err))?;
-                            }
-                            _ => (),
-                        },
-                        Err(err) => Err(ErrorKind::HyperError(err))?,
-                    }
+                    def.add_file(format!("/{}", dst.display()), mode);
                 }
+                Err(e) => println!("{:?}", e),
             }
         }
 
-        Ok(())
+        let mut def_file = fs::File::create("build/dest/PKGDEF").unwrap();
+        def_file
+            .write_all(&bincode::serialize(&def).unwrap())
+            .unwrap();
+    }
+
+    async fn build_pkg(&self) {
+        // Lets build the archive
+        let archive_file = fs::File::create(format!(
+            "build/{}-{}.gem",
+            self.info.package.name, self.info.package.version
+        ))
+        .unwrap();
+
+        let encoder = zstd::Encoder::new(archive_file, zstd::zstd_safe::max_c_level())
+            .unwrap()
+            .auto_finish();
+
+        let mut archive = tar::Builder::new(encoder);
+
+        archive.follow_symlinks(false);
+        archive.append_dir_all("", "build/dest/").unwrap();
+        archive.finish().unwrap();
     }
 
     pub async fn build(&self) -> Result<PathBuf> {
@@ -88,9 +85,13 @@ impl Package {
         fs::create_dir_all("build/source/").unwrap();
         fs::create_dir_all("build/dest/").unwrap();
 
-        // Pull the sources
-        self.pull_sources().await?;
+        self.generate_pkgdef().await;
+        self.build_package().await;
+        self.build_pkg().await;
 
-        Ok(PathBuf::new())
+        Ok(PathBuf::from(format!(
+            "build/{}-{}.gem",
+            self.info.package.name, self.info.package.version
+        )))
     }
 }

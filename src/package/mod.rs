@@ -5,6 +5,7 @@ use version_compare::Version;
 use super::error::*;
 
 mod compiler;
+mod definition;
 mod info;
 mod sign;
 

@@ -47,7 +47,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Those are the checklist for the modules / commands that are supported.
 Note that not everything is implemented just yet, we're working on it!
 
-- [ ] `build`
+- [x] `build`
 - [ ] `install`
 - [ ] `uninstall`
 - [ ] `kitchen`

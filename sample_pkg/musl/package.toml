@@ -1,0 +1,22 @@
+[package]
+name = "musl"
+version = "v1.2.2"
+license = "MIT"
+description = "musl is an implementation of the C standard library built on top of the Linux system call API, including interfaces defined in the base language standard, POSIX, and widely agreed-upon extensions. musl is lightweight, fast, simple, free, and strives to be correct in the sense of standards-conformance and safety."
+maintainers = ["Robin Alexander Plate"]
+# Mark this package as a system library.
+# This just means that you cannot `gem update / gem install` it.
+# It'll be automatically updated once the system image retrieves a patch.
+system_lib = true
+
+[sources]
+musl = { url = "git://git.musl-libc.org/musl", branch = "v1.2.2" }
+
+[build]
+files = [
+    # The package manager is smart enough to put it inside the correct directory
+    # E.G this will end up in /System/Libraries/$(ARCH)/libc.so
+    { src = "lib/libc.so" },
+    { src = "lib/libc.a" },
+]
+script = "build.sh"

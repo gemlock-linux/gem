@@ -1,16 +1,12 @@
 use std::{fs, path::PathBuf};
 
-use version_compare::Version;
-
 use super::error::*;
 
 mod compiler;
 mod definition;
 mod info;
-mod sign;
 
 pub use info::*;
-pub use sign::*;
 
 pub struct Package {
     pub info: TomlPackageInfo,

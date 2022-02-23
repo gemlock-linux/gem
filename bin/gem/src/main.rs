@@ -2,9 +2,7 @@ use clap::Command;
 
 use crate::modules::*;
 
-mod error;
 mod modules;
-mod package;
 
 #[tokio::main]
 async fn main() {

@@ -1,0 +1,17 @@
+[package]
+name = "gem"
+version = "0.1.0"
+edition = "2021"
+default-run = "gem"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1"
+tokio = { version = "^1.17.0", features = ["rt-multi-thread", "macros"] }
+clap = "3.1"
+
+gem-package = { path = "../../components/gem-package" }
+
+#ring = "0.16"
+#hyper = { version = "0.14", features = ["client", "http1", "http2", "runtime"] }

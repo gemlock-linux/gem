@@ -1,11 +1,12 @@
 use std::{fs, path::PathBuf};
 
-use super::error::*;
-
-mod compiler;
+mod builder;
 mod definition;
+mod error;
 mod info;
 
+pub use definition::*;
+pub use error::*;
 pub use info::*;
 
 pub struct Package {

@@ -1,8 +1,7 @@
 use std::env;
 
 use async_trait::async_trait;
-
-use crate::package::Package;
+use gem_package::Package;
 
 use super::Module;
 
